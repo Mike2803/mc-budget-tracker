@@ -1,84 +1,84 @@
-// create variable to hold db connection
-let db;
-// establish a connection to IndexedDB database 
-const request = indexedDB.open('mc_budget_tracker', 1);
+// indexedDB to hold offline db queries until connectivity is restored
 
-// this event will emit if the database version changes
-request.onupgradeneeded = function (event) {
-    const db = event.target.result;
+let db;
+
+// create request to act as event listener for the database
+const request = indexedDB.open('budgeteer', 1);
+
+// emit if the db version changes
+request.onupgradeneeded = (e) => {
+    // save reference to db
+    db = e.target.result;
+
+    // create object store with autoincrementing pk. this only runs once.
     db.createObjectStore('new_transaction', { autoIncrement: true });
 };
 
-// upon a successful 
-request.onsuccess = function (event) {
-    // when db is successfully created with its object store 
-    db = event.target.result;
-    // check if app is online
+// upon successful connection
+request.onsuccess = (e) => {
+    db = e.target.result;
+
+    // check if app is online, if yes, run uploadTransaction() to update mongodb
     if (navigator.onLine) {
         uploadTransaction();
     }
 };
 
-request.onerror = function (event) {
-    console.log(event.target.errorCode);
+request.onerror = (e) => {
+    console.log(e.target.errorCode);
 };
 
-
-// Will be executed if we attempt to submit a new transaction and there's no internet connection
+// execute if new transaction is submitted while offline
 function saveRecord(record) {
-    // open a new transaction with the database with read and write permissions 
+    // open new transaction with db with read and write permissions
     const transaction = db.transaction(['new_transaction'], 'readwrite');
 
-    // access the object store 
-    const budgetObjectStore = transaction.objectStore('new_transaction');
+    // access object store
+    const transactionObjectStore = transaction.objectStore('new_transaction');
 
-    // add record to your store with add method
-    budgetObjectStore.add(record);
-};
+    // add record to store
+    transactionObjectStore.add(record);
+}
 
-// function that will handle collecting all of the data 
 function uploadTransaction() {
-    // open a transaction on your db
     const transaction = db.transaction(['new_transaction'], 'readwrite');
+    const transactionObjectStore = transaction.objectStore('new_transaction');
 
-    // access your object store
-    const budgetObjectStore = transaction.objectStore('new_transaction');
+    // get all records from store
+    const getAll = transactionObjectStore.getAll();
 
-    // get all transactions from store and set to a variable
-    const getAll = budgetObjectStore.getAll();
-
-    // upon a successful .getAll() execution, run this function
-    getAll.onsuccess = function () {
-        // if there was data in indexedDb's store, let's send it to the api server
+    // upon successful .getAll() execution...
+    getAll.onsuccess = () => {
+        // if there's data in idb's store, send it to api server
         if (getAll.result.length > 0) {
             fetch('/api/transaction', {
                 method: 'POST',
                 body: JSON.stringify(getAll.result),
                 headers: {
                     Accept: 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json'
-                }
+                    'Content-Type': 'application/json',
+                },
             })
-                .then(response => response.json())
-                .then(serverResponse => {
-                    if (serverResponse.message) {
-                        throw new Error(serverResponse);
+                .then((response) => response.json())
+                .then((data) => {
+                    if (data.message) {
+                        throw new Error(data);
                     }
-                    // open one more transaction
-                    const transaction = db.transaction(['new_transaction'], 'readwrite');
-                    // access the object store
-                    const budgetObjectStore = transaction.objectStore('new_transaction');
-                    // clear all items in your store
-                    budgetObjectStore.clear();
 
-                    alert('All saved transactions has been submitted!');
+                    const transaction = db.transaction(['new_transaction'], 'readwrite');
+                    const transactionObjectStore =
+                        transaction.objectStore('new_transaction');
+
+                    // clear all items in store
+                    transactionObjectStore.clear();
+
+                    alert('All saved transactions have been uploaded!');
+
+                    location.reload();
                 })
-                .catch(err => {
+                .catch((err) => {
                     console.log(err);
                 });
         }
-    }
+    };
 }
-
-// listen for app coming back online
-window.addEventListener('online', uploadTransaction)
