@@ -3,7 +3,7 @@
 let db;
 
 // create request to act as event listener for the database
-const request = indexedDB.open('Budget-Tracker', 1);
+const request = indexedDB.open('budget_tracker', 1);
 
 // emit if the db version changes
 request.onupgradeneeded = (e) => {
